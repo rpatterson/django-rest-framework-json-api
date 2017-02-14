@@ -90,6 +90,15 @@ class JSONRenderer(renderers.JSONRenderer):
             source = field.source
             relation_type = utils.get_related_resource_type(field)
 
+            # Take a model and return it's primary key, calling the primary key fields 'get_attribute'
+            # function or the models .pk property.
+            def get_pk(obj):
+                pk_attr = obj._meta.pk.name
+                if hasattr(field, 'fields') and pk_attr in field.fields:
+                    return field.fields[pk_attr].get_attribute(obj)
+                else:
+                    return obj.pk
+
             if isinstance(field, relations.HyperlinkedIdentityField):
                 resolved, relation_instance = utils.get_relation_instance(resource_instance, source, field.parent)
                 if not resolved:
@@ -103,7 +112,7 @@ class JSONRenderer(renderers.JSONRenderer):
 
                 for related_object in relation_queryset:
                     relation_data.append(
-                        OrderedDict([('type', relation_type), ('id', encoding.force_text(related_object.pk))])
+                        OrderedDict([('type', relation_type), ('id', encoding.force_text(get_pk(related_object)))])
                     )
 
                 data.update({field_name: {
@@ -138,7 +147,9 @@ class JSONRenderer(renderers.JSONRenderer):
                 resolved, relation = utils.get_relation_instance(resource_instance, '%s_id' % source, field.parent)
                 if not resolved:
                     continue
-                relation_id = relation if resource.get(field_name) else None
+                relation_id = get_pk(
+                    getattr(resource_instance, source)
+                ) if resource.get(field_name) else None
                 relation_data = {
                     'data': (
                         OrderedDict([('type', relation_type), ('id', encoding.force_text(relation_id))])
@@ -187,7 +198,7 @@ class JSONRenderer(renderers.JSONRenderer):
 
                     relation_data.append(OrderedDict([
                         ('type', nested_resource_instance_type),
-                        ('id', encoding.force_text(nested_resource_instance.pk))
+                        ('id', encoding.force_text(get_pk(nested_resource_instance)))
                     ]))
                 data.update({
                     field_name: {
@@ -211,14 +222,21 @@ class JSONRenderer(renderers.JSONRenderer):
                 if isinstance(serializer_data, list):
                     for position in range(len(serializer_data)):
                         nested_resource_instance = resource_instance_queryset[position]
+                        nested_resource_data = serializer_data[position]
                         nested_resource_instance_type = (
                             relation_type or
                             utils.get_resource_type_from_instance(nested_resource_instance)
                         )
 
+                        instance_pk_name = nested_resource_instance._meta.pk.name
+                        if instance_pk_name in nested_resource_data:
+                            pk = nested_resource_data[instance_pk_name]
+                        else:
+                            pk = nested_resource_instance.pk
+
                         relation_data.append(OrderedDict([
                             ('type', nested_resource_instance_type),
-                            ('id', encoding.force_text(nested_resource_instance.pk))
+                            ('id', encoding.force_text(pk))
                         ]))
 
                     data.update({field_name: {'data': relation_data}})
@@ -234,7 +252,7 @@ class JSONRenderer(renderers.JSONRenderer):
                         'data': (
                             OrderedDict([
                                 ('type', relation_type),
-                                ('id', encoding.force_text(relation_instance.pk))
+                                ('id', get_pk(relation_instance))
                             ]) if resource.get(field_name) else None)
                     }
                 })
@@ -382,9 +400,17 @@ class JSONRenderer(renderers.JSONRenderer):
 
     @classmethod
     def build_json_resource_obj(cls, fields, resource, resource_instance, resource_name):
+        if resource_instance is None:
+            pk = None
+        else:
+            # Check if the primary key exists in the resource by getting the primary keys attribute name.
+            pk_attr = resource_instance._meta.pk.name
+            pk = resource[pk_attr] if pk_attr in resource else resource_instance.pk
+            pk = encoding.force_text(pk)
+
         resource_data = [
             ('type', resource_name),
-            ('id', encoding.force_text(resource_instance.pk) if resource_instance else None),
+            ('id', pk),
             ('attributes', cls.extract_attributes(fields, resource)),
         ]
         relationships = cls.extract_relationships(fields, resource, resource_instance)
