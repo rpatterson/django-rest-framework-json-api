@@ -5,7 +5,7 @@ import copy
 from collections import OrderedDict
 
 import inflection
-from django.db.models import Manager, QuerySet
+from django.db.models import Manager
 from django.utils import six, encoding
 from rest_framework import relations
 from rest_framework import renderers
@@ -111,8 +111,10 @@ class JSONRenderer(renderers.JSONRenderer):
                     if relation_instance is not None else list()
 
                 for related_object in relation_queryset:
-                    relation_data.append(
-                        OrderedDict([('type', relation_type), ('id', encoding.force_text(get_pk(related_object)))])
+                    relation_data.append(OrderedDict([
+                        ('type', relation_type),
+                        ('id', encoding.force_text(getattr(
+                            related_object, field.lookup_field)))])
                     )
 
                 data.update({field_name: {
@@ -144,12 +146,18 @@ class JSONRenderer(renderers.JSONRenderer):
                 continue
 
             if isinstance(field, (relations.PrimaryKeyRelatedField, relations.HyperlinkedRelatedField)):
-                resolved, relation = utils.get_relation_instance(resource_instance, '%s_id' % source, field.parent)
-                if not resolved:
-                    continue
-                relation_id = get_pk(
-                    getattr(resource_instance, source)
-                ) if resource.get(field_name) else None
+                lookup_field = getattr(field, 'lookup_field', None)
+                if lookup_field:
+                    relation_id = getattr(
+                        getattr(resource_instance, source), lookup_field)
+                else:
+                    resolved, relation = utils.get_relation_instance(
+                        resource_instance, source, field.parent)
+                    if not resolved:
+                        continue
+                    relation_id = get_pk(
+                        getattr(resource_instance, source)
+                    ) if resource.get(field_name) else None
                 relation_data = {
                     'data': (
                         OrderedDict([('type', relation_type), ('id', encoding.force_text(relation_id))])
@@ -198,7 +206,9 @@ class JSONRenderer(renderers.JSONRenderer):
 
                     relation_data.append(OrderedDict([
                         ('type', nested_resource_instance_type),
-                        ('id', encoding.force_text(get_pk(nested_resource_instance)))
+                        ('id', encoding.force_text(getattr(
+                            nested_resource_instance,
+                            field.child_relation.lookup_field)))
                     ]))
                 data.update({
                     field_name: {
@@ -228,7 +238,9 @@ class JSONRenderer(renderers.JSONRenderer):
                             utils.get_resource_type_from_instance(nested_resource_instance)
                         )
 
-                        instance_pk_name = nested_resource_instance._meta.pk.name
+                        instance_pk_name = (
+                            getattr(field, 'lookup_field', None) or
+                            nested_resource_instance._meta.pk.name)
                         if instance_pk_name in nested_resource_data:
                             pk = nested_resource_data[instance_pk_name]
                         else:
@@ -247,12 +259,19 @@ class JSONRenderer(renderers.JSONRenderer):
                 if not resolved:
                     continue
 
+                url_field_name = getattr(field, 'url_field_name', 'url')
+                if url_field_name in field.fields:
+                    id_ = getattr(
+                        relation_instance,
+                        field[url_field_name].lookup_field)
+                else:
+                    id_ = get_pk(relation_instance)
                 data.update({
                     field_name: {
                         'data': (
                             OrderedDict([
                                 ('type', relation_type),
-                                ('id', get_pk(relation_instance))
+                                ('id', encoding.force_text(id_))
                             ]) if resource.get(field_name) else None)
                     }
                 })
@@ -402,6 +421,12 @@ class JSONRenderer(renderers.JSONRenderer):
     def build_json_resource_obj(cls, fields, resource, resource_instance, resource_name):
         if resource_instance is None:
             pk = None
+        elif 'url' in fields:
+            pk = getattr(resource_instance, fields['url'].lookup_field)
+            pk = encoding.force_text(pk)
+        elif 'id' in fields:
+            pk = fields['id'].get_attribute(resource_instance)
+            pk = encoding.force_text(pk)
         else:
             # Check if the primary key exists in the resource by getting the primary keys attribute name.
             pk_attr = resource_instance._meta.pk.name
