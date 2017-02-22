@@ -192,7 +192,6 @@ def get_related_resource_type(relation):
             hasattr(relation.child.Meta, 'model')):
         # For ManyToMany relationships, get the model from the child
         # serializer of the list serializer
-        # TODO Test coverage
         relation_model = relation.child.Meta.model
     else:
         parent_serializer = relation.parent
@@ -277,10 +276,7 @@ def get_default_included_resources_from_serializer(serializer):
     meta = getattr(serializer, 'JSONAPIMeta', None)
     if meta is None and getattr(serializer, 'many', False):
         meta = getattr(serializer.child, 'JSONAPIMeta', None)
-    try:
-        return list(meta.included_resources)
-    except AttributeError:
-        return []
+    return list(getattr(meta, 'included_resources', []))
 
 
 def get_included_serializers(serializer):
