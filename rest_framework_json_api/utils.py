@@ -36,7 +36,7 @@ else:
     from django.db.models.fields.related import ReverseManyRelatedObjectsDescriptor
 
 
-def get_resource_name(context):
+def get_resource_name(context, format_type=None, pluralize=None):
     """
     Return the name of a resource.
     """
@@ -61,10 +61,12 @@ def get_resource_name(context):
     except AttributeError:
         try:
             serializer = view.get_serializer_class()
-            return get_resource_type_from_serializer(serializer)
+            return get_resource_type_from_serializer(
+                serializer, format_type=format_type, pluralize=pluralize)
         except AttributeError:
             try:
-                resource_name = get_resource_type_from_model(view.model)
+                resource_name = get_resource_type_from_model(
+                    view.model, format_type=format_type, pluralize=pluralize)
             except AttributeError:
                 resource_name = view.__class__.__name__
 
@@ -173,9 +175,10 @@ def format_resource_type(value, format_type=None, pluralize=None):
     return inflection.pluralize(value) if pluralize else value
 
 
-def get_related_resource_type(relation):
+def get_related_resource_type(relation, format_type=None, pluralize=None):
     try:
-        return get_resource_type_from_serializer(relation)
+        return get_resource_type_from_serializer(
+            relation, format_type=format_type, pluralize=pluralize)
     except AttributeError:
         pass
     relation_model = None
@@ -227,31 +230,39 @@ def get_related_resource_type(relation):
     if relation_model is None:
         raise APIException(_('Could not resolve resource type for relation %s' % relation))
 
-    return get_resource_type_from_model(relation_model)
+    return get_resource_type_from_model(
+        relation_model, format_type=format_type, pluralize=pluralize)
 
 
-def get_resource_type_from_model(model):
+def get_resource_type_from_model(model, format_type=None, pluralize=None):
     json_api_meta = getattr(model, 'JSONAPIMeta', None)
     return getattr(
         json_api_meta,
         'resource_name',
-        format_resource_type(model.__name__))
+        format_resource_type(
+            model.__name__, format_type=format_type, pluralize=pluralize))
 
 
-def get_resource_type_from_queryset(qs):
-    return get_resource_type_from_model(qs.model)
+def get_resource_type_from_queryset(qs, format_type=None, pluralize=None):
+    return get_resource_type_from_model(
+        qs.model, format_type=format_type, pluralize=pluralize)
 
 
-def get_resource_type_from_instance(instance):
+def get_resource_type_from_instance(
+        instance, format_type=None, pluralize=None):
     if hasattr(instance, '_meta'):
-        return get_resource_type_from_model(instance._meta.model)
+        return get_resource_type_from_model(
+            instance._meta.model,
+            format_type=format_type, pluralize=pluralize)
 
 
-def get_resource_type_from_manager(manager):
-    return get_resource_type_from_model(manager.model)
+def get_resource_type_from_manager(manager, format_type=None, pluralize=None):
+    return get_resource_type_from_model(
+        manager.model, format_type=format_type, pluralize=pluralize)
 
 
-def get_resource_type_from_serializer(serializer):
+def get_resource_type_from_serializer(
+        serializer, format_type=None, pluralize=None):
     json_api_meta = getattr(serializer, 'JSONAPIMeta', None)
     meta = getattr(serializer, 'Meta', None)
     if hasattr(json_api_meta, 'resource_name'):
@@ -259,7 +270,8 @@ def get_resource_type_from_serializer(serializer):
     elif hasattr(meta, 'resource_name'):
         return meta.resource_name
     elif hasattr(meta, 'model'):
-        return get_resource_type_from_model(meta.model)
+        return get_resource_type_from_model(
+            meta.model, format_type=format_type, pluralize=pluralize)
     raise AttributeError()
 
 
