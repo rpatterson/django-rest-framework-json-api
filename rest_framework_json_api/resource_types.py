@@ -46,6 +46,9 @@ class ResourceTypeSerializerField(serializers.Field):
             serializer_class: resource_type
             for resource_type, serializer_class
             in self.serializer_classes.items()}
+        self.serializer_classes_by_model = {
+            serializer_class.Meta.model: serializer_class
+            for serializer_class in self.serializer_classes.values()}
 
     def to_internal_value(self, data):
         """
@@ -63,6 +66,12 @@ class ResourceTypeSerializerField(serializers.Field):
             self.fail('serializer', value=obj)
         return self.resource_types[obj]
 
+    def get_attribute(self, instance):
+        """
+        Get the serializer corresponding to the instance's class.
+        """
+        return self.serializer_classes_by_model[type(instance)]
+
 
 class ResourceTypeSerializer(serializers.Serializer):
     """
@@ -73,28 +82,53 @@ class ResourceTypeSerializer(serializers.Serializer):
 
     def to_internal_value(self, data):
         """
-        Capture items that aren't in our schema.
+        Pass on items that aren't in our schema to the type serializer.
         """
         result = super(ResourceTypeSerializer, self).to_internal_value(data)
 
-        self.type_data = {
-            key: value for key, value in data.items()
-            if key not in result}
+        # Never pass `type` on as it's just how we get the serializer for the
+        # resource type to delegate to
+        serializer_class = result.pop('type')
 
-        return result
-    
-    def validate(self, data):
-        """
-        Validate the rest of the fields with the serializer.
-        """
-        self.serializer = data['type'](data=self.type_data)
+        # Include all keys already processes by our schema.
+        result.update(
+            (key, value) for key, value in data.items()
+            if key not in self.fields)
+
+        # Return the internal value from the serializer
+        self.serializer = serializer_class(data=result, context=self.context)
+        # Have to do validation here in order to be able to return the following
         self.serializer.is_valid(raise_exception=True)
         return self.serializer.validated_data
 
+    def to_representation(self, instance):
+        """
+        Include items from the type serializer that aren't in our schema.
+        """
+        result = super(ResourceTypeSerializer, self).to_representation(instance)
+
+        # Collect all the keys that our schema might override on the resource
+        # type's serializer
+        source_attrs = set([])
+        for field in self.fields.values():
+            source_attrs.update(field.source_attrs)
+
+        serializer_class = self.fields['type'].get_attribute(instance)
+        self.serializer = serializer_class(
+            instance=instance, context=self.context)
+
+        # Add all the keys from the resource type's serializer
+        # that our schema doesn't override
+        result.update(
+            (key, value) for key, value in self.serializer.data.items()
+            if key not in self.fields)
+
+        return result
+
     def save(self):
         """
-        Delegate the rest of the fields to the looked up serializer.
+        Delegate saving to the type serializer.
         """
         assert self.serializer.validated_data, (
-            'You must call `.is_valid()` before saving.')
+            'You must call `self.is_valid()` before saving.')
         return self.serializer.save()
