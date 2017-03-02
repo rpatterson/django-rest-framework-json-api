@@ -15,6 +15,10 @@ class ResourceTypeSerializerField(serializers.Field):
     Map JSON API resource types to serializers.
     """
 
+    default_error_messages = {
+        'resource_type': 'No serializer available for type {data!r}',
+        'serializer': 'No resource type available for serializer {data!r}'}
+
     def __init__(
             self, serializer_classes={}, format_type=None, pluralize=None,
             **kwargs):
@@ -48,8 +52,7 @@ class ResourceTypeSerializerField(serializers.Field):
         Return the serializer corresponding to the resource type.
         """
         if data not in self.serializer_classes:
-            raise serializers.ValidationError(
-                'No serializer available for type {0!r}'.format(data))
+            self.fail('resource_type', value=data)
         return self.serializer_classes[data]
 
     def to_representation(self, obj):
@@ -57,8 +60,7 @@ class ResourceTypeSerializerField(serializers.Field):
         Return the resource type corresponding to the serializer.
         """
         if obj not in self.resource_types:
-            raise serializers.ValidationError(
-                'No resource type available for serializer {0!r}'.format(obj))
+            self.fail('serializer', value=obj)
         return self.resource_types[obj]
 
 
