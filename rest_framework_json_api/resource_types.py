@@ -16,8 +16,8 @@ class ResourceTypeSerializerField(serializers.Field):
     """
 
     default_error_messages = {
-        'resource_type': 'No serializer available for type {data!r}',
-        'serializer': 'No resource type available for serializer {data!r}'}
+        'resource_type': 'No serializer available for type {value!r}',
+        'serializer': 'No resource type available for serializer {value!r}'}
 
     def __init__(
             self, serializer_classes={}, format_type=None, pluralize=None,
