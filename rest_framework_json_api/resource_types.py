@@ -46,9 +46,11 @@ class ResourceTypeSerializerField(serializers.Field):
             serializer_class: resource_type
             for resource_type, serializer_class
             in self.serializer_classes.items()}
-        self.serializer_classes_by_model = {
+        self.serializer_classes_by_instance_type = {
             serializer_class.Meta.model: serializer_class
-            for serializer_class in self.serializer_classes.values()}
+            for serializer_class in self.serializer_classes.values()
+            if hasattr(serializer_class, 'Meta') and
+            hasattr(serializer_class.Meta, 'model')}
 
     def to_internal_value(self, data):
         """
@@ -70,7 +72,7 @@ class ResourceTypeSerializerField(serializers.Field):
         """
         Get the serializer corresponding to the instance's class.
         """
-        return self.serializer_classes_by_model[type(instance)]
+        return self.serializer_classes_by_instance_type[type(instance)]
 
 
 class ResourceTypeSerializer(serializers.Serializer):
